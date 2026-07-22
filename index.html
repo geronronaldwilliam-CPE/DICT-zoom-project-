@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zoom Meeting Scheduler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ══════════════════════════ USER-FACING SCHEDULER ══════════════════════════ -->
+<div id="user-app">
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="hd-left">
+      <div class="logo-user"><i class="ti ti-video"></i></div>
+      <div class="hd-text">
+        <h1>Zoom Meeting Scheduler</h1>
+        <p>View room availability or submit a scheduling request.</p>
+      </div>
+    </div>
+    <div class="hd-right">
+      <div class="header-logo"><img src="DICT.png" alt="DICT Logo"></div>
+      <button class="hdr-btn" onclick="toggleTheme()" id="theme-btn">
+        <i class="ti ti-sun" id="theme-icon"></i><span id="theme-lbl">Light</span>
+      </button>
+    </div>
+  </div>
+  <div class="hdivider"></div>
+
+  <!-- ROOM BUTTONS -->
+  <div class="btn-grid" id="user-room-btns">
+    <div class="room-btn" id="btn-100" onclick="openCal('100')">
+      <div class="btn-icon ic-b"><i class="ti ti-calendar-event"></i></div>
+      <div class="btn-label">100 pax</div>
+      <div class="btn-sub">View calendar</div>
+    </div>
+    <div class="room-btn" id="btn-300" onclick="openCal('300')">
+      <div class="btn-icon ic-t"><i class="ti ti-calendar-event"></i></div>
+      <div class="btn-label">300 pax</div>
+      <div class="btn-sub">View calendar</div>
+    </div>
+    <div class="room-btn" id="btn-500" onclick="openCal('500')">
+      <div class="btn-icon ic-p"><i class="ti ti-calendar-event"></i></div>
+      <div class="btn-label">500 pax</div>
+      <div class="btn-sub">View calendar</div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend-bar">
+    <div class="legend-label"><i class="ti ti-palette" style="font-size:15px;"></i>Legend</div>
+    <div class="legend-items">
+      <div class="legend-item"><div class="leg-sw sw-g"></div><div><div class="leg-title">Available</div><div class="leg-desc">No requests on this slot</div></div></div>
+      <div class="legend-item"><div class="leg-sw sw-y"></div><div><div class="leg-title">Partial / Pending</div><div class="leg-desc">Only part of the shift is booked</div></div></div>
+      <div class="legend-item"><div class="leg-sw sw-r"></div><div><div class="leg-title">Fully Booked</div><div class="leg-desc">Approved — entire shift locked</div></div></div>
+      <div class="legend-item"><div class="leg-sw sw-b"></div><div><div class="leg-title">Recurring Meeting</div><div class="leg-desc">Blue border = repeats on a schedule</div></div></div>
+    </div>
+  </div>
+
+  <!-- CALENDAR -->
+  <div class="cal-wrap" id="cal-wrap">
+    <div class="cal-toolbar">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="changeMonth(-1)"><i class="ti ti-chevron-left"></i></button>
+        <div class="cal-month" id="cal-month">July 2026</div>
+        <button class="cal-nav-btn" onclick="changeMonth(1)"><i class="ti ti-chevron-right"></i></button>
+      </div>
+      <div class="cal-meta">
+        <span class="cal-window-badge" id="cal-window-badge"><i class="ti ti-info-circle"></i> Bookable thru —</span>
+        <span class="cal-pax-badge" id="cal-pax-badge">100 pax</span>
+        <button class="cal-close-btn" onclick="closeCal()"><i class="ti ti-x"></i></button>
+      </div>
+    </div>
+    <div class="cal-dow-row">
+      <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div>
+      <div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div>
+      <div class="cal-dow">Sat</div>
+    </div>
+    <div class="cal-days" id="cal-days"></div>
+  </div>
+</div>
+
+<!-- BOOKING MODAL -->
+<div class="overlay" id="book-overlay" onclick="handleOvClick(event,'book-overlay')">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <div>
+        <h2 id="bm-title">Book a Meeting</h2>
+        <p id="bm-sub">Select details for your reservation</p>
+      </div>
+      <button class="modal-close" onclick="closeOverlay('book-overlay')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="view-only-note" id="view-only-note"><i class="ti ti-lock"></i><div>This date is outside the current advance-reservation window. You can review existing bookings here, but new requests can't be submitted for it yet.</div></div>
+      <div class="view-only-note full-note" id="full-note"><i class="ti ti-calendar-x"></i><div>Both AM and PM shifts are fully booked for this date. You can review the existing bookings below.</div></div>
+      <div class="m-tabs" id="book-tabs">
+        <button class="m-tab active" onclick="switchTab('form',this)">Book Slot</button>
+        <button class="m-tab" onclick="switchTab('existing',this)">Existing Bookings</button>
+      </div>
+
+      <!-- FORM TAB -->
+      <div id="tab-form">
+        <div class="f-row">
+          <div class="f-label">Full Name <span class="f-req">*</span></div>
+          <input class="f-inp" id="f-name" type="text" placeholder="Juan dela Cruz">
+        </div>
+        <div class="f-row">
+          <div class="f-label">Agency / Office <span class="f-req">*</span></div>
+          <input class="f-inp" id="f-agency" type="text" placeholder="DICT Region IV-A">
+        </div>
+        <div class="f-row">
+          <div class="f-label">Meeting Title <span class="f-req">*</span></div>
+          <input class="f-inp" id="f-title" type="text" placeholder="e.g. Regional ICT Summit">
+        </div>
+        <div class="f-2">
+          <div>
+            <div class="f-label">Date <span class="f-req">*</span></div>
+            <input class="f-inp" id="f-date" type="date" onchange="validateFormDate(this)">
+          </div>
+          <div>
+            <div class="f-label">Zoom Account <span class="f-req">*</span></div>
+            <select class="f-inp" id="f-account" onchange="onBookingAccountChange()"></select>
+          </div>
+        </div>
+        <div class="f-row" style="display:none;">
+          <div>
+            <div class="f-label">Pax Room <span class="f-req">*</span></div>
+            <select class="f-inp" id="f-pax" onchange="onPaxRoomChange()"></select>
+          </div>
+        </div>
+        <div class="f-row">
+          <div class="f-label">Time Shift <span class="f-req">*</span></div>
+          <div class="shift-grid">
+            <div class="shift-opt sel" data-shift="AM" onclick="selShift(this)">
+              <div class="shift-name">AM</div><div class="shift-time">07:00–12:00</div>
+            </div>
+            <div class="shift-opt" data-shift="PM" onclick="selShift(this)">
+              <div class="shift-name">PM</div><div class="shift-time">13:00–18:00</div>
+            </div>
+            <div class="shift-opt" data-shift="BOTH" onclick="selShift(this)">
+              <div class="shift-name">BOTH</div><div class="shift-time">07:00–18:00</div>
+            </div>
+          </div>
+        </div>
+        <div class="f-2">
+          <div>
+            <div class="f-label">Start Time <span class="f-req">*</span></div>
+            <div class="time-picker">
+              <select class="f-inp tp-h" id="f-start-h" onchange="onManualTimeChange()"></select>
+              <select class="f-inp tp-m" id="f-start-m" onchange="onManualTimeChange()"></select>
+              <select class="f-inp tp-ap" id="f-start-ap" onchange="onManualTimeChange()">
+                <option value="AM">AM</option><option value="PM">PM</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <div class="f-label">End Time <span class="f-req">*</span></div>
+            <div class="time-picker">
+              <select class="f-inp tp-h" id="f-end-h" onchange="onManualTimeChange()"></select>
+              <select class="f-inp tp-m" id="f-end-m" onchange="onManualTimeChange()"></select>
+              <select class="f-inp tp-ap" id="f-end-ap" onchange="onManualTimeChange()">
+                <option value="AM">AM</option><option value="PM">PM</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="tog-row">
+          <div><div class="tog-lbl">Registration Required</div><div class="tog-sub">Attendees must register before they can join</div></div>
+          <label class="toggle"><input type="checkbox" id="reg-tog"><span class="tog-sl"></span></label>
+        </div>
+
+        <div class="f-row">
+          <div class="f-label">Security</div>
+          <select class="f-inp" id="f-security">
+            <option value="waiting_room_passcode" selected>Waiting Room + Passcode</option>
+            <option value="waiting_room">Waiting Room Only</option>
+            <option value="passcode">Passcode Only</option>
+            <option value="authenticated_users">Only Authenticated Users Can Join</option>
+            <option value="none">None (Open Join)</option>
+          </select>
+        </div>
+
+        <div class="tog-row">
+          <div><div class="tog-lbl">Recurring Meeting</div><div class="tog-sub">Repeat on a set schedule</div></div>
+          <label class="toggle"><input type="checkbox" id="recur-tog" onchange="toggleRecur(this)"><span class="tog-sl"></span></label>
+        </div>
+        <div class="recur-box" id="recur-box">
+          <div class="recur-grid">
+            <div>
+              <div class="f-label">Frequency</div>
+              <select class="f-inp" id="f-freq" onchange="onFreqChange()">
+                <option value="daily">Daily</option>
+                <option value="weekly" selected>Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div>
+              <div class="f-label">Repeat Count</div>
+              <input class="f-inp" id="f-count" type="number" min="1" max="52" value="4">
+              <div class="count-hint" id="count-hint">Number of weeks to repeat</div>
+            </div>
+          </div>
+          <div class="days-wrap" id="days-wrap">
+            <div class="f-label" style="margin-top:12px;">Days to Repeat <span class="f-req">*</span></div>
+            <div class="days-grid">
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Mon" checked onchange="onDaysChange()"><span>Monday</span></label>
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Tue" checked onchange="onDaysChange()"><span>Tuesday</span></label>
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Wed" checked onchange="onDaysChange()"><span>Wednesday</span></label>
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Thu" checked onchange="onDaysChange()"><span>Thursday</span></label>
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Fri" checked onchange="onDaysChange()"><span>Friday</span></label>
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Sat" onchange="onDaysChange()"><span>Saturday</span></label>
+              <label class="day-opt"><input type="checkbox" class="day-cb" value="Sun" onchange="onDaysChange()"><span>Sunday</span></label>
+            </div>
+            <div class="days-selected" id="days-selected">Selected: Mon, Tue, Wed, Thu, Fri</div>
+          </div>
+        </div>
+
+        <div class="f-row" style="margin-top:14px;">
+          <div class="f-label">Notes / Special Requirements</div>
+          <textarea class="f-inp" id="f-notes" placeholder="AV setup, livestream, etc."></textarea>
+        </div>
+
+        <button class="sub-btn" onclick="submitBooking()"><i class="ti ti-send"></i> Submit Request</button>
+      </div>
+
+      <!-- EXISTING TAB -->
+      <div id="tab-existing" style="display:none;">
+        <div id="existing-list" class="bk-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WEEKEND CONFIRM MODAL (shown when a requested meeting date falls on Sat/Sun) -->
+<div class="overlay" id="weekend-warn-ov" onclick="if(event.target.id==='weekend-warn-ov')cancelWeekendWarn()">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-hd">
+      <div>
+        <h2><i class="ti ti-calendar-event" style="color:#f59e0b;"></i> Weekend Booking</h2>
+        <p>Double-checking before you submit.</p>
+      </div>
+      <button class="mc" onclick="cancelWeekendWarn()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;" id="weekend-warn-text"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="ghost-btn" onclick="cancelWeekendWarn()">Cancel</button>
+      <button class="sub-btn" style="width:auto;padding:7px 16px;" onclick="confirmWeekendContinue();">
+        <i class="ti ti-send"></i> Continue
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- EXPIRY WARNING MODAL (shown when a requested meeting date is beyond the account's license expiry) -->
+<div class="overlay" id="expiry-warn-ov" onclick="if(event.target.id==='expiry-warn-ov')closeOverlay('expiry-warn-ov')">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-hd">
+      <div>
+        <h2><i class="ti ti-alert-triangle" style="color:#f59e0b;"></i> License Expires Before Meeting</h2>
+        <p>This booking may become invalid if the account isn't renewed.</p>
+      </div>
+      <button class="mc" onclick="closeOverlay('expiry-warn-ov')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;" id="expiry-warn-text"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="ghost-btn" onclick="closeOverlay('expiry-warn-ov')">Cancel</button>
+      <button class="sub-btn" style="width:auto;padding:7px 16px;" onclick="closeOverlay('expiry-warn-ov');proceedWithBookingSubmit();">
+        <i class="ti ti-send"></i> Submit Anyway
+      </button>
+    </div>
+  </div>
+</div>
+</div>
+<!-- ═══════════════════════ END USER-FACING SCHEDULER ═══════════════════════ -->
+
+
+<!-- ══════════════════════════ ADMIN APP ══════════════════════════ -->
+<div id="admin-app" style="display:none;">
+
+  <!-- LOGIN -->
+  <div class="login-wrap" id="login-wrap">
+    <div class="login-card">
+      <div class="login-icon"><i class="ti ti-shield-lock"></i></div>
+      <h1>Admin Panel</h1>
+      <p>Sign in to manage Zoom meeting reservation requests.</p>
+      <div class="login-form">
+        <input class="f-inp" id="pass-inp" type="password" placeholder="Admin password">
+        <div class="login-err" id="login-err">Incorrect password. Please try again.</div>
+        <button class="pri-btn" onclick="adminLogin()"><i class="ti ti-login"></i> Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div class="app">
+    <div class="admin-wrap" id="admin-wrap">
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="logo-admin"><i class="ti ti-video"></i></div>
+          <div>
+            <div class="topbar-title">Admin Panel</div>
+            <div class="topbar-sub">Zoom Meeting Scheduler — Reservation Management</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-logo"><img src="DICT.png" alt="DICT Logo"></div>
+          <button class="ghost-btn" onclick="toggleReminderMute()" id="reminder-mute-btn" title="Toggle meeting reminder alarms">
+            <i class="ti ti-bell" id="reminder-mute-icon"></i><span id="reminder-mute-lbl">Reminders On</span>
+          </button>
+          <button class="ghost-btn" onclick="toggleTheme()" id="admin-theme-btn">
+            <i class="ti ti-sun" id="admin-theme-icon"></i><span id="admin-theme-lbl">Light</span>
+          </button>
+          <a class="ghost-btn" href="#" onclick="goToScheduler();return false;"><i class="ti ti-arrow-left"></i> Back to Scheduler</a>
+          <button class="ghost-btn" onclick="loadAdminBookings()"><i class="ti ti-refresh"></i> Refresh</button>
+          <button class="ghost-btn" onclick="openExportModal()"><i class="ti ti-file-spreadsheet"></i> Export</button>
+          <button class="danger-btn" onclick="adminLogout()"><i class="ti ti-logout"></i> Logout</button>
+        </div>
+      </div>
+      <div class="hdivider"></div>
+
+      <!-- ADMIN NAV TABS -->
+      <div class="admin-tabs">
+        <button class="admin-tab active" id="atab-bookings" onclick="switchAdminTab('bookings',this)">
+          <i class="ti ti-calendar-event"></i> Booking Requests
+        </button>
+        <button class="admin-tab" id="atab-accounts" onclick="switchAdminTab('accounts',this)">
+          <i class="ti ti-video"></i> Zoom Accounts
+        </button>
+        <button class="admin-tab" id="atab-settings" onclick="switchAdminTab('settings',this)">
+          <i class="ti ti-settings"></i> Settings
+        </button>
+      </div>
+
+      <!-- ── PANEL: BOOKINGS ── -->
+      <div class="admin-panel" id="apanel-bookings">
+        <!-- STATS -->
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-ico ico-b"><i class="ti ti-calendar-event"></i></div></div>
+            <div class="stat-num" id="st-total">0</div><div class="stat-lbl">Total Requests</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-ico ico-y"><i class="ti ti-clock"></i></div></div>
+            <div class="stat-num" id="st-pending">0</div><div class="stat-lbl">Pending Approval</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-ico ico-g"><i class="ti ti-circle-check"></i></div></div>
+            <div class="stat-num" id="st-approved">0</div><div class="stat-lbl">Approved</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-ico ico-r"><i class="ti ti-circle-x"></i></div></div>
+            <div class="stat-num" id="st-denied">0</div><div class="stat-lbl">Denied</div>
+          </div>
+        </div>
+
+        <!-- FILTER BAR -->
+        <div class="filter-bar">
+          <div class="filter-btns">
+            <button class="f-btn active" data-f="ALL"      onclick="setFilter(this)">All      <span class="f-count" id="fc-all">0</span></button>
+            <button class="f-btn"        data-f="PENDING"  onclick="setFilter(this)">Pending  <span class="f-count" id="fc-pend">0</span></button>
+            <button class="f-btn"        data-f="APPROVED" onclick="setFilter(this)">Approved <span class="f-count" id="fc-app">0</span></button>
+            <button class="f-btn"        data-f="DENIED"   onclick="setFilter(this)">Denied   <span class="f-count" id="fc-den">0</span></button>
+          </div>
+          <div class="search-wrap">
+            <i class="ti ti-search"></i>
+            <input class="search-inp" id="search-inp" placeholder="Search requests…" oninput="renderTable()">
+          </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th>ID</th><th>Title</th><th>Requestor</th><th>Agency</th>
+              <th>Date</th><th>Shift</th><th>Pax</th><th>Recurring</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="req-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── PANEL: ZOOM ACCOUNTS ── -->
+      <div class="admin-panel" id="apanel-accounts" style="display:none;">
+        <div class="accounts-header">
+          <div>
+            <div class="accounts-title">Zoom Account Management</div>
+            <div class="accounts-sub">Add and manage Zoom accounts by capacity tier. Each account can be activated, expired, or deleted.</div>
+          </div>
+          <button class="pri-btn" style="width:auto;padding:8px 16px;white-space:nowrap;" onclick="openAddAccountModal()">
+            <i class="ti ti-plus"></i> Add Account
+          </button>
+        </div>
+
+        <!-- Account tiers rendered here -->
+        <div id="accounts-grid"></div>
+      </div>
+
+      <!-- ── PANEL: SETTINGS ── -->
+      <div class="admin-panel" id="apanel-settings" style="display:none;">
+        <div class="settings-card">
+          <div class="settings-row">
+            <div class="settings-lbl"><i class="ti ti-mail"></i> Notification Email</div>
+            <div class="settings-sub">New booking requests are sent to this address. Editable anytime.</div>
+            <div class="settings-inp-row">
+              <input class="f-inp" id="admin-email-inp" type="email" placeholder="admin@yourdomain.com">
+              <button class="pri-btn" style="width:auto;padding:8px 14px;white-space:nowrap;" onclick="saveAdminEmail()"><i class="ti ti-device-floppy"></i> Save</button>
+            </div>
+          </div>
+          <div class="settings-row" style="grid-column:1/-1;">
+            <div class="settings-lbl"><i class="ti ti-bell-ringing"></i> Meeting Reminder Alarm</div>
+            <div class="settings-sub">Sounds an alarm and shows a banner 1 hour, 30 minutes, and 15 minutes before any <strong>approved</strong> meeting starts.</div>
+            <div class="tog-row" style="border-bottom:none;padding-top:6px;">
+              <div><div class="tog-lbl">Enable reminder alarms</div><div class="tog-sub">Turn off to silence all upcoming-meeting alerts</div></div>
+              <label class="toggle"><input type="checkbox" id="reminder-enabled-tog" onchange="onReminderToggleChange(this)"><span class="tog-sl"></span></label>
+            </div>
+            <div class="tog-row" style="border-bottom:none;">
+              <div><div class="tog-lbl">Alarm sound</div><div class="tog-sub" id="alarm-sound-status">Using default beep</div></div>
+              <div style="display:flex;gap:8px;">
+                <button class="ghost-btn" onclick="document.getElementById('alarm-sound-file').click()"><i class="ti ti-upload"></i> Upload Sound</button>
+                <button class="ghost-btn" id="alarm-sound-reset-btn" onclick="resetAlarmSound()" style="display:none;"><i class="ti ti-rotate"></i> Reset</button>
+              </div>
+              <input type="file" id="alarm-sound-file" accept="audio/*" style="display:none;" onchange="uploadAlarmSound(this)">
+            </div>
+            <div class="settings-inp-row" style="margin-top:8px;">
+              <button class="ghost-btn" onclick="testReminderAlarm()"><i class="ti ti-volume"></i> Test Alarm Sound</button>
+              <button class="ghost-btn" id="notif-perm-btn" onclick="requestNotifPermission()"><i class="ti ti-device-desktop"></i> Enable Desktop Notifications</button>
+            </div>
+            <audio id="reminder-alarm-audio" preload="auto" style="display:none;"></audio>
+          </div>
+          <div class="settings-row">
+            <div class="settings-lbl"><i class="ti ti-link"></i> Shareable Booking Link</div>
+            <div class="settings-sub">Send this link to anyone who needs to view or submit reservation requests.</div>
+            <div class="settings-inp-row">
+              <input class="f-inp" id="share-link-inp" type="text" readonly>
+              <button class="ghost-btn" style="white-space:nowrap;" onclick="copyShareLink()"><i class="ti ti-copy"></i> Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end admin-wrap -->
+  </div>
+
+  <!-- DETAIL MODAL -->
+  <div class="overlay" id="detail-ov" onclick="if(event.target.id==='detail-ov')closeDetailModal()">
+    <div class="modal-box">
+      <div class="modal-hd">
+        <h2 id="det-title">Booking Detail</h2>
+        <button class="mc" onclick="closeDetailModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body" id="det-body"></div>
+      <div class="modal-footer" id="det-footer"></div>
+    </div>
+  </div>
+
+  <!-- EXPORT MODAL -->
+  <div class="overlay" id="export-ov" onclick="if(event.target.id==='export-ov')closeOverlay('export-ov')">
+    <div class="modal-box">
+      <div class="modal-hd">
+        <div>
+          <h2>Export Bookings</h2>
+          <p>Choose which requests to include in the download</p>
+        </div>
+        <button class="mc" onclick="closeOverlay('export-ov')"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div id="report-filters">
+        <div class="f-row">
+          <div class="f-label">Month</div>
+          <select class="f-inp" id="exp-month"></select>
+        </div>
+        <div class="f-row">
+          <div class="f-label">Export Format</div>
+          <div class="fmt-grid">
+            <div class="fmt-opt sel" id="fmt-xlsx" onclick="selectFmt('xlsx',this)">
+              <div class="fmt-icon"><i class="ti ti-file-spreadsheet"></i></div>
+              <div class="fmt-text">
+                <div class="fmt-name">Excel</div>
+                <div class="fmt-sub">.xlsx file</div>
+              </div>
+              <div class="fmt-check"><i class="ti ti-check"></i></div>
+            </div>
+            <div class="fmt-opt" id="fmt-csv" onclick="selectFmt('csv',this)">
+              <div class="fmt-icon"><i class="ti ti-table"></i></div>
+              <div class="fmt-text">
+                <div class="fmt-name">CSV</div>
+                <div class="fmt-sub">.csv file</div>
+              </div>
+              <div class="fmt-check"><i class="ti ti-check"></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="f-row">
+          <div class="f-label">Pax Room</div>
+          <select class="f-inp" id="exp-pax">
+            <option value="ALL">All Rooms</option>
+            <option value="100">100 pax</option>
+            <option value="300">300 pax</option>
+            <option value="500">500 pax</option>
+          </select>
+        </div>
+        <div class="f-row">
+          <div class="f-label">Include Status</div>
+          <div class="tog-row">
+            <div class="tog-lbl">Approved</div>
+            <label class="toggle"><input type="checkbox" id="exp-approved" checked><span class="tog-sl"></span></label>
+          </div>
+          <div class="tog-row">
+            <div class="tog-lbl">Denied</div>
+            <label class="toggle"><input type="checkbox" id="exp-denied" checked><span class="tog-sl"></span></label>
+          </div>
+          <div class="tog-row">
+            <div class="tog-lbl">Pending</div>
+            <label class="toggle"><input type="checkbox" id="exp-pending" checked><span class="tog-sl"></span></label>
+          </div>
+        </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost-btn" onclick="closeOverlay('export-ov')">Cancel</button>
+        <button class="pri-btn" style="width:auto;padding:8px 16px;" onclick="runExport()"><i class="ti ti-download"></i> Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT ZOOM ACCOUNT MODAL -->
+  <div class="overlay" id="account-ov" onclick="if(event.target.id==='account-ov')closeOverlay('account-ov')">
+    <div class="modal-box">
+      <div class="modal-hd">
+        <div>
+          <h2 id="acc-modal-title">Add Zoom Account</h2>
+          <p id="acc-modal-sub">Register a new Zoom license for a department or team.</p>
+        </div>
+        <button class="mc" onclick="closeOverlay('account-ov')"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="acc-edit-id">
+        <div class="f-row">
+          <div class="f-label">Account Name / Department <span class="f-req">*</span></div>
+          <input class="f-inp" id="acc-name" type="text" placeholder="e.g. MISS Department">
+        </div>
+        <div class="f-2">
+          <div>
+            <div class="f-label">Capacity (pax) <span class="f-req">*</span></div>
+            <select class="f-inp" id="acc-capacity" onchange="toggleCustomCapInput()">
+              <option value="100">100 pax</option>
+              <option value="300">300 pax</option>
+              <option value="500">500 pax</option>
+              <option value="custom">Custom (enter below)…</option>
+            </select>
+          </div>
+          <div>
+            <div class="f-label">License Status</div>
+            <select class="f-inp" id="acc-status">
+              <option value="active">Active</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
+        </div>
+        <div class="f-row">
+          <div class="f-label">Zoom Email / Account ID</div>
+          <input class="f-inp" id="acc-email" type="text" placeholder="zoom-account@yourdomain.com">
+        </div>
+        <div class="f-row">
+          <div class="f-label">License Expiry Date</div>
+          <input class="f-inp" id="acc-expiry" type="date">
+        </div>
+        <div class="f-row">
+          <div class="f-label">Notes</div>
+          <textarea class="f-inp" id="acc-notes" placeholder="e.g. Shared with HR, renewal pending…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost-btn" onclick="closeOverlay('account-ov')">Cancel</button>
+        <button class="pri-btn" style="width:auto;padding:8px 16px;" onclick="saveAccount()">
+          <i class="ti ti-device-floppy"></i> <span id="acc-save-lbl">Save Account</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRM DELETE MODAL -->
+  <div class="overlay" id="delete-account-ov" onclick="if(event.target.id==='delete-account-ov')closeOverlay('delete-account-ov')">
+    <div class="modal-box" style="max-width:420px;">
+      <div class="modal-hd">
+        <div>
+          <h2>Delete Account</h2>
+          <p>This action cannot be undone.</p>
+        </div>
+        <button class="mc" onclick="closeOverlay('delete-account-ov')"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text2);line-height:1.6;">
+          Are you sure you want to delete the account <strong id="del-acc-name" style="color:var(--text);"></strong>?
+          This will remove it from the system permanently.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost-btn" onclick="closeOverlay('delete-account-ov')">Cancel</button>
+        <button class="danger-btn" style="padding:7px 14px;" onclick="confirmDeleteAccount()">
+          <i class="ti ti-trash"></i> Delete
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- ACCOUNT RENEWAL NEEDED MODAL (blocks approval when meeting date is beyond account expiry) -->
+  <div class="overlay" id="renew-needed-ov" onclick="if(event.target.id==='renew-needed-ov')closeOverlay('renew-needed-ov')">
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-hd">
+        <div>
+          <h2><i class="ti ti-alert-triangle" style="color:#f59e0b;"></i> Renew Account First</h2>
+          <p>This booking can't be approved yet.</p>
+        </div>
+        <button class="mc" onclick="closeOverlay('renew-needed-ov')"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text2);line-height:1.6;" id="renew-needed-text"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost-btn" onclick="closeOverlay('renew-needed-ov')">Got it</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- ═══════════════════════════ END ADMIN APP ═══════════════════════════ -->
+
+<!-- MEETING REMINDER ALARM BANNER -->
+<div class="reminder-banner-wrap" id="reminder-banner-wrap"></div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
