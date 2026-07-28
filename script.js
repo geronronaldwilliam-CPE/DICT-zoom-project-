@@ -5,8 +5,8 @@ const DEFAULT_ADMIN_EMAIL = 'admin@yourdomain.com';
 const ADMIN_PASSWORD = '123admin'; // ← change this!
 
 /* ── Supabase client ── */
-const SUPABASE_URL = 'https://ahypoktbascpqcjtlvov.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoeXBva3RiYXNjcHFjanRsdm92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMDMyMDAsImV4cCI6MjEwMDc3OTIwMH0.KwpUN_QZYsHQ9MuG27SyQBQbg6CLQbHPkHIERNGeHqk';
+const SUPABASE_URL = 'https://lfjjkzddthcswkzcekgj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmampremRkdGhjc3dremNla2dqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMTMwMzEsImV4cCI6MjEwMDc4OTAzMX0.CswSDwnCgpmIwTYOHmr66II14xyDiQM3dsB0eQDyzyA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function getAdminEmail(){ return localStorage.getItem('zms_admin_email') || DEFAULT_ADMIN_EMAIL; }
